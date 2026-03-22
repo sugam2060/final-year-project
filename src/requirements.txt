@@ -7,4 +7,5 @@ langgraph
 langchain-core
 langchain-openai
 PyGithub
-python-dotenv
+langchain-mcp-adapters
+mcp
