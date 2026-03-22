@@ -7,6 +7,10 @@ from config import settings
 from router.types.webhook_types import PullRequestEvent
 from agent.dummy_agent import run_swarm
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["Webhook"])
 
 # Constraint 2: Explicit timeouts. PyGithub timeout is in seconds.
@@ -59,7 +63,7 @@ async def github_webhook_receiver(request: Request):
             pr_event = PullRequestEvent(**payload)
         except Exception as e:
              # If it's a pull_request event but missing our required fields, we log and ignore
-             print(f"Incomplete PR Event received: {e}")
+             logger.warning("Incomplete PR Event received: %s", e)
              return {"status": "ignored", "reason": "incomplete_pr_data"}
 
         # Filter for relevant actions
