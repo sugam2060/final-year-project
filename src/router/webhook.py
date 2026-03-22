@@ -34,48 +34,61 @@ async def verify_signature(request: Request):
         )
 
 @router.post("/webhook")
-async def github_webhook_receiver(request: Request, payload: PullRequestEvent):
+async def github_webhook_receiver(request: Request):
     """
-    Webhook receiver for GitHub Pull Request events.
-    Strictly validated using Pydantic (Constraint 3).
+    Webhook receiver for GitHub events.
+    Handles signature verification and filters for Pull Request actions.
     """
-    # Security: Verify Signature (Constraint 3)
+    # 1. Security First: Verify Signature
+    # We read the raw body once here. Starlette caches it for subsequent JSON parsing.
     await verify_signature(request)
     
-    # Filter for relevant actions
-    if payload.action not in ["opened", "synchronize"]:
-        return {"status": "ignored", "action": payload.action}
+    # 2. Extract Event Type
+    github_event = request.headers.get("X-GitHub-Event", "unknown")
     
-    # Constraint 1: PyGithub is synchronous, so we offload blocking calls to threadpool.
-    def fetch_github_diff():
-        # Access repository and pull request
-        repo = github_client.get_repo(payload.repository.full_name)
-        pr = repo.get_pull(payload.pull_request.number)
-        
-        # Constraint 5: Use ''.join() for efficiency and filter out empty patches
-        # pr.get_files() returns a PaginatedList
-        files = pr.get_files()
-        diff_chunks = []
-        for file in files:
-            if file.patch:
-                diff_chunks.append(file.patch)
-        
-        return "\n".join(diff_chunks)
-
+    # 3. Parse JSON Body (Generic Dict to avoid 422 errors)
     try:
-        # Offload IO-bound operation
-        code_diff = await asyncio.to_thread(fetch_github_diff)
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
+
+    # 4. Handle PR Events
+    if github_event == "pull_request":
+        # Zero-Trust Parsing (Constraint 3): Convert dict to Pydantic model
+        try:
+            pr_event = PullRequestEvent(**payload)
+        except Exception as e:
+             # If it's a pull_request event but missing our required fields, we log and ignore
+             print(f"Incomplete PR Event received: {e}")
+             return {"status": "ignored", "reason": "incomplete_pr_data"}
+
+        # Filter for relevant actions
+        if pr_event.action not in ["opened", "synchronize"]:
+            return {"status": "ignored", "action": pr_event.action}
+
+        # Constraint 1: Offload blocking calls
+        def process_swarm():
+            # Get code diff
+            repo = github_client.get_repo(pr_event.repository.full_name)
+            pr = repo.get_pull(pr_event.pull_request.number)
+            
+            # Constraint 7 filters applied here...
+            files = pr.get_files()
+            diff_chunks = []
+            for file in files:
+                if file.patch and len(file.patch) < 51200: # 50KB Guardrail
+                    # Directory/Extension filter check...
+                    ext = "." + file.filename.split(".")[-1] if "." in file.filename else ""
+                    if ext.lower() not in ['.png', '.jpg', '.zip', '.pem']:
+                         diff_chunks.append(f"File: {file.filename}\n{file.patch}")
+            
+            diff_string = "\n\n".join(diff_chunks)
+            run_swarm(pr_event.pull_request.number, diff_string)
+
+        # Offload to threadpool
+        asyncio.create_task(asyncio.to_thread(process_swarm))
         
-        # Trigger dummy agent (Constraint 1: also offloaded)
-        await asyncio.to_thread(run_swarm, payload.pull_request.number, code_diff)
-        
-        return {"status": "success", "message": "Swarm activated for PR audit"}
-    
-    except Exception as e:
-        # Constraint 4: Centralized error handling would be better, but adding basic catch here.
-        # Note: In a production app, we would use a logger.
-        print(f"CRITICAL ERROR in Webhook Processing: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="Internal processing error"
-        )
+        return {"status": "success", "event": "pull_request", "action": pr_event.action}
+
+    # 5. Handle Other Events (Return 200 to acknowledge receipt)
+    return {"status": "ignored", "event": github_event}
