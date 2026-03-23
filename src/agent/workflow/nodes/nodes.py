@@ -30,6 +30,12 @@ SYNTHESIZER_PROMPT = """You are the Lead Engineer.
 Compile the reviews below into a final, prioritized Markdown comment for a Pull Request.
 Highlight blockers (Red) vs suggestions (Yellow).
 
+In addition to the summary, extract specific, actionable code fixes from the specialists' reviews and format them strictly as GitHub suggestions.
+Use the ANNOTATED DIFF below to determine the exact line numbers. Each line has a [Line X] prefix for accuracy.
+
+ANNOTATED DIFF:
+{annotated_diff}
+
 Architect Review: {architect_review}
 Security Review: {security_review}
 Performance Review: {optimizer_review}
@@ -56,17 +62,31 @@ async def optimizer_node(state: SwarmState) -> Dict[str, str]:
     response = await llm.ainvoke([HumanMessage(content=prompt)])
     return {"optimizer_review": response.content}
 
-async def synthesizer_node(state: SwarmState) -> Dict[str, str]:
+async def synthesizer_node(state: SwarmState) -> Dict[str, Any]:
     """Synthesizer / Final Aggregator."""
     from langchain_openai import ChatOpenAI
+    from config import settings
+    from agent.types.inline_comments import SynthesizerOutput
+    
     # No tools needed for synthesis (Constraint 1: use ChatOpenAI directly)
-    llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+    # We use structured output to enforce the review schema
+    llm = ChatOpenAI(
+        model="gpt-4o", 
+        temperature=0.7,
+        api_key=str(settings.OPENAI_API_KEY)
+    ).with_structured_output(SynthesizerOutput)
     
     prompt = SYNTHESIZER_PROMPT.format(
+        annotated_diff=state["annotated_diff"],
         architect_review=state["architect_review"],
         security_review=state["security_review"],
         optimizer_review=state["optimizer_review"]
     )
     
-    response = await llm.ainvoke([HumanMessage(content=prompt)])
-    return {"final_comment": response.content}
+    # Invoke structured output chain
+    result = await llm.ainvoke([HumanMessage(content=prompt)])
+    
+    return {
+        "final_comment": result.general_summary, 
+        "inline_suggestions": result.inline_suggestions
+    }

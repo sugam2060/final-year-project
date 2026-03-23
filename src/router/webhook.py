@@ -96,7 +96,8 @@ async def github_webhook_receiver(request: Request):
                 await run_swarm(
                     pr_number=pr_event.pull_request.number,
                     code_diff=diff_string,
-                    repo_name=pr_event.repository.full_name
+                    repo_name=pr_event.repository.full_name,
+                    commit_sha=pr_event.pull_request.head.sha
                 )
             except Exception as e:
                 logger.error("Async Scaffolding Failure: %s", e)

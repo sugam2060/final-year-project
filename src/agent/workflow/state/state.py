@@ -1,11 +1,14 @@
-from typing import TypedDict
-from langchain_core.messages import BaseMessage
+from typing import TypedDict, List
+from agent.types.inline_comments import InlineSuggestion
 
 class SwarmState(TypedDict):
     pr_number: int
     repo_name: str
+    commit_sha: str  # REQUIRED: To anchor inline comments
     code_diff: str
+    annotated_diff: str # Pre-parsed diff with line markers for LLM accuracy
     architect_review: str
     security_review: str
     optimizer_review: str
     final_comment: str
+    inline_suggestions: List[InlineSuggestion]

@@ -1,3 +1,4 @@
+from config import settings
 from langchain_openai import ChatOpenAI
 from agent.workflow.mcp.client import get_github_mcp_tools
 
@@ -9,6 +10,7 @@ async def get_tool_bound_llm():
     llm = ChatOpenAI(
         model="gpt-4o", 
         temperature=0,
+        api_key=str(settings.OPENAI_API_KEY), # Explicitly set API Key
         timeout=30 # Mandatory timeout for LLM
     )
     

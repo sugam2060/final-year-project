@@ -1,30 +1,25 @@
-import asyncio
-from mcp import ClientSession
-from mcp.client.sse import sse_client
-from langchain_mcp_adapters.tools import load_mcp_tools
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from config import settings
 
 async def get_github_mcp_tools():
     """
-    Connects to the GitHub Copilot MCP server and retrieves dynamic tools.
+    Connects to the GitHub Copilot MCP server and retrieves dynamic tools 
+    using the correct HTTP stateless transport.
     """
-    # Header injection (Constraint 3: Secret management)
-    headers = {
-        "Authorization": f"Bearer {str(settings.GITHUB_TOKEN)}",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
+    # Initialize the MultiServer client with the HTTP transport configuration
+    client = MultiServerMCPClient({
+        "github": {
+            "transport": "http",  # Matches your JSON config and fixes the 405!
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": {
+                "Authorization": f"Bearer {str(settings.GITHUB_TOKEN)}",
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            }
+        }
+    })
     
-    # Connect to the remote MCP server via SSE
-    async with sse_client(
-        url="https://api.githubcopilot.com/mcp/",
-        headers=headers
-    ) as (read, write):
-        async with ClientSession(read, write) as session:
-            # Initialize the session
-            await session.initialize()
-            
-            # Use the LangChain adapter to discover and convert tools
-            # Note: In a production long-running app, we would manage the session lifecyle more carefully.
-            mcp_tools = await load_mcp_tools(session)
-            return mcp_tools
+    # LangChain handles the correct POST handshake and tool translation automatically
+    # This avoids the manual sse_client management and handles discrete JSON-RPC messages.
+    mcp_tools = await client.get_tools()
+    return mcp_tools
