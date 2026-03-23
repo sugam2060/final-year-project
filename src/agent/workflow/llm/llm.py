@@ -34,7 +34,12 @@ async def get_tool_bound_llm():
         )
     
     # 3. Retrieve tools from the remote MCP server
-    mcp_tools = await get_github_mcp_tools()
-    
-    # 4. Bind tools for tool-calling capabilities
-    return llm.bind_tools(mcp_tools)
+    # We use a safety wrapper to prevent library bugs (like UnboundLocalError) from crashing the swarm
+    try:
+        mcp_tools = await get_github_mcp_tools()
+        # 4. Bind tools for tool-calling capabilities
+        return llm.bind_tools(mcp_tools)
+    except Exception as e:
+        logger.error("Failed to load MCP tools: %s. Proceeding without external tool support.", e)
+        return llm
+

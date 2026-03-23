@@ -62,29 +62,45 @@ The project follows a hyper-modular architecture designed for scalability and cl
 
 ## 🛠️ Configuration & Setup
 
-### 1. Requirements
-Ensure you have Python 3.10+ and the required libraries installed:
-```bash
-pip install -r src/requirements.txt
-```
+### 1. GitHub Configuration
+
+#### 🔏 Personal Access Token (PAT)
+The system requires a GitHub PAT to post reviews and fetch PR data.
+*   **Classic PAT**: Ensure the `repo` scope is selected (Full control of repositories).
+*   **Fine-grained PAT**: Grant access to:
+    *   `Pull Requests` (Read & Write) - To post bundled reviews/suggestions.
+    *   `Issues` (Read & Write) - To post conversational replies to `@swarm` mentions.
+    *   `Contents` (Read-only) - To access repository source code for analysis.
+    *   `Metadata` (Read-only) - Mandatory for all tokens.
+
+#### ⚓ Webhook Setup
+Configure your GitHub repository Webhook (`Settings > Webhooks > Add webhook`) as follows:
+*   **Payload URL**: `http://[your-domain]/webhook` (Use **ngrok** for local development).
+*   **Content type**: `application/json`.
+*   **Secret**: Must match your `GITHUB_WEBHOOK_SECRET` in `.env`.
+*   **Events**: Select **"Let me select individual events"** and check:
+    *   ✅ **Pull requests** (For initial code reviews)
+    *   ✅ **Issue comments** (For conversational replies in the PR thread)
+    *   ✅ **Pull request review comments** (For replies to specific code-line suggestions)
 
 ### 2. Environment Variables
 Create a `.env` file in the `src/` directory with the following keys:
 ```env
 GITHUB_TOKEN=your_personal_access_token
 GITHUB_WEBHOOK_SECRET=your_webhook_shared_secret
-OPENAI_API_KEY=your_openai_key
+LLM_PROVIDER=NVIDIA # Options: OPENAI, NVIDIA
+OPENAI_API_KEY=sk-...
+NVIDIA_API_KEY=nvapi-...
+GITHUB_BOT_USERNAME=your_bot_username
 ```
 
 ### 3. Running the Server
-Start the FastAPI server (running on `localhost:8000` by default):
+Install dependencies and start the FastAPI server:
 ```bash
+pip install -r src/requirements.txt
 python src/main.py
 ```
 
-### 4. GitHub Hook Setup
-Configure your GitHub repository to send `Pull Request` events to:
-`http://[your-domain]/webhook` (Note: Use tools like **ngrok** for local testing).
 
 ---
 
