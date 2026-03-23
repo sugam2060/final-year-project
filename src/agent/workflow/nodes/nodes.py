@@ -45,6 +45,19 @@ DIFF:
 {code_diff}
 """
 
+BLAST_RADIUS_PROMPT = """You are the Blast Radius Predictor. 
+Analyze the following code diff in the repository: {repo_name} (PR #{pr_number}).
+Your goal is to predict system-wide architectural impacts and dependency risks.
+Focus on:
+- How changes to shared modules or schemas propagate to downstream consumers.
+- Potential breaking changes in internal or external APIs.
+- High-risk modifications to critical paths (auth, billing, core data layers).
+- Adherence to the project's design constraints and orchestration patterns.
+
+DIFF:
+{code_diff}
+"""
+
 # ============================================================================
 # SPECIALIST PROMPTS — Conversational Mode (Appended when is_conversational)
 # ============================================================================
@@ -82,6 +95,7 @@ ANNOTATED DIFF:
 Architect Review: {architect_review}
 Security Review: {security_review}
 Performance Review: {optimizer_review}
+Blast Radius Analysis: {blast_radius_review}
 """
 
 SYNTHESIZER_PROMPT_CONVERSATIONAL = """You are the Lead Engineer. 
@@ -98,6 +112,7 @@ UPDATED SPECIALIST REVIEWS:
 Architect Review: {architect_review}
 Security Review: {security_review}
 Performance Review: {optimizer_review}
+Blast Radius Analysis: {blast_radius_review}
 
 INSTRUCTIONS:
 - Write a direct, conversational reply (not a formal review).
@@ -153,6 +168,13 @@ async def optimizer_node(state: SwarmState) -> Dict[str, str]:
     response = await llm.ainvoke([HumanMessage(content=prompt)])
     return {"optimizer_review": response.content}
 
+async def blast_radius_node(state: SwarmState) -> Dict[str, str]:
+    """Blast Radius Predictor Persona."""
+    llm = await get_tool_bound_llm()
+    prompt = _build_specialist_prompt(BLAST_RADIUS_PROMPT, state)
+    response = await llm.ainvoke([HumanMessage(content=prompt)])
+    return {"blast_radius_review": response.content}
+
 async def synthesizer_node(state: SwarmState) -> Dict[str, Any]:
     """Synthesizer / Final Aggregator — Dual Mode (Initial vs Conversational)."""
     from langchain_openai import ChatOpenAI
@@ -170,14 +192,14 @@ async def synthesizer_node(state: SwarmState) -> Dict[str, Any]:
                 model="meta/llama-3.1-405b-instruct",
                 api_key=str(settings.NVIDIA_API_KEY),
                 temperature=0.7,
-                timeout=30
+                model_kwargs={"timeout": 30}
             )
         else:
             llm = ChatOpenAI(
                 model="gpt-4o", 
                 temperature=0.7,
                 api_key=str(settings.OPENAI_API_KEY),
-                timeout=30
+                model_kwargs={"timeout": 30}
             )
         
         if has_structured:
@@ -193,7 +215,8 @@ async def synthesizer_node(state: SwarmState) -> Dict[str, Any]:
             user_message=state.get("user_message", ""),
             architect_review=state["architect_review"],
             security_review=state["security_review"],
-            optimizer_review=state["optimizer_review"]
+            optimizer_review=state["optimizer_review"],
+            blast_radius_review=state["blast_radius_review"]
         )
         
         result = await llm.ainvoke([HumanMessage(content=prompt)])
@@ -209,7 +232,8 @@ async def synthesizer_node(state: SwarmState) -> Dict[str, Any]:
             annotated_diff=state["annotated_diff"],
             architect_review=state["architect_review"],
             security_review=state["security_review"],
-            optimizer_review=state["optimizer_review"]
+            optimizer_review=state["optimizer_review"],
+            blast_radius_review=state["blast_radius_review"]
         )
         
         result = await llm.ainvoke([HumanMessage(content=prompt)])

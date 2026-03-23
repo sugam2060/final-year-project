@@ -42,6 +42,7 @@ async def run_swarm(
         "architect_review": "",
         "security_review": "",
         "optimizer_review": "",
+        "blast_radius_review": "",
         "final_comment": "",
         "inline_suggestions": []
     }

@@ -13,5 +13,6 @@ class SwarmState(TypedDict):
     architect_review: str
     security_review: str
     optimizer_review: str
+    blast_radius_review: str
     final_comment: str
     inline_suggestions: List[InlineSuggestion]

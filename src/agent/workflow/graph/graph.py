@@ -3,7 +3,8 @@ from agent.workflow.state.state import SwarmState
 from agent.workflow.nodes.nodes import (
     architect_node, 
     security_node, 
-    optimizer_node, 
+    optimizer_node,
+    blast_radius_node,
     synthesizer_node
 )
 
@@ -14,6 +15,7 @@ builder = StateGraph(SwarmState)
 builder.add_node("architect", architect_node)
 builder.add_node("security", security_node)
 builder.add_node("optimizer", optimizer_node)
+builder.add_node("blast_radius", blast_radius_node)
 builder.add_node("synthesizer", synthesizer_node)
 
 # Parallel Routing logic (Fan-out)
@@ -21,12 +23,14 @@ builder.add_node("synthesizer", synthesizer_node)
 builder.add_edge(START, "architect")
 builder.add_edge(START, "security")
 builder.add_edge(START, "optimizer")
+builder.add_edge(START, "blast_radius")
 
 # Converge (Fan-in)
 # (Architect, Security, Optimizer) -> Synthesizer
 builder.add_edge("architect", "synthesizer")
 builder.add_edge("security", "synthesizer")
 builder.add_edge("optimizer", "synthesizer")
+builder.add_edge("blast_radius", "synthesizer")
 
 # Finish (Synthesizer -> End)
 builder.add_edge("synthesizer", END)
