@@ -6,6 +6,7 @@ pydantic-settings
 langgraph
 langchain-core
 langchain-openai
+langchain-nvidia-ai-endpoints
 PyGithub
 langchain-mcp-adapters
 mcp
