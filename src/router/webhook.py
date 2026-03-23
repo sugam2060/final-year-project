@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request, HTTPException, status
 from github import Github
 from config import settings
 from router.types.webhook_types import PullRequestEvent
-from agent.dummy_agent import run_swarm
+from agent.swarm import run_swarm
 
 import logging
 
@@ -70,27 +70,40 @@ async def github_webhook_receiver(request: Request):
         if pr_event.action not in ["opened", "synchronize"]:
             return {"status": "ignored", "action": pr_event.action}
 
-        # Constraint 1: Offload blocking calls
-        def process_swarm():
-            # Get code diff
-            repo = github_client.get_repo(pr_event.repository.full_name)
-            pr = repo.get_pull(pr_event.pull_request.number)
+        # Constraint 1: Full Async orchestration
+        async def process_swarm_async():
+            # Get code diff (offloaded to thread as PyGithub is sync)
+            def fetch_diff():
+                repo = github_client.get_repo(pr_event.repository.full_name)
+                pr = repo.get_pull(pr_event.pull_request.number)
+                
+                # Fetching files...
+                files = pr.get_files()
+                diff_chunks = []
+                for file in files:
+                    if file.patch and len(file.patch) < 51200: # 50KB Guardrail
+                        ext = "." + file.filename.split(".")[-1] if "." in file.filename else ""
+                        if ext.lower() not in ['.png', '.jpg', '.zip', '.pem']:
+                             diff_chunks.append(f"File: {file.filename}\n{file.patch}")
+                
+                return "\n\n".join(diff_chunks)
             
-            # Constraint 7 filters applied here...
-            files = pr.get_files()
-            diff_chunks = []
-            for file in files:
-                if file.patch and len(file.patch) < 51200: # 50KB Guardrail
-                    # Directory/Extension filter check...
-                    ext = "." + file.filename.split(".")[-1] if "." in file.filename else ""
-                    if ext.lower() not in ['.png', '.jpg', '.zip', '.pem']:
-                         diff_chunks.append(f"File: {file.filename}\n{file.patch}")
-            
-            diff_string = "\n\n".join(diff_chunks)
-            run_swarm(pr_event.pull_request.number, diff_string)
+            try:
+                # 1. Non-blocking Fetch
+                diff_string = await asyncio.to_thread(fetch_diff)
+                
+                # 2. Invoke LangGraph Orchestration (Async-native)
+                await run_swarm(
+                    pr_number=pr_event.pull_request.number,
+                    code_diff=diff_string,
+                    repo_name=pr_event.repository.full_name,
+                    commit_sha=pr_event.pull_request.head.sha
+                )
+            except Exception as e:
+                logger.error("Async Scaffolding Failure: %s", e)
 
-        # Offload to threadpool
-        asyncio.create_task(asyncio.to_thread(process_swarm))
+        # Trigger background execution without blocking the response
+        asyncio.create_task(process_swarm_async())
         
         return {"status": "success", "event": "pull_request", "action": pr_event.action}
 
