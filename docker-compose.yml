@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  swarm-bot:
+    build: 
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: langgraph-swarm-bot
+    ports:
+      - "8000:8000"
+    environment:
+      - GITHUB_WEBHOOK_SECRET=asdfjljdasfhqfoiwaehsflvbkad
+      - GITHUB_TOKEN=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
+      - OPENAI_API_KEY=DUMMY_OPENAI_KEY
+      - LLM_PROVIDER=NVIDIA # NVIDIA or OPENAI
+      - NVIDIA_API_KEY=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 # go to nvidea build site and create API key (meta/llama-405b-instruct) model is used
+      - LANGSMITH_TRACING=false # make it false if you dont want tracing
+      - LANGSMITH_API_KEY=DUMMY_LANGSMITH_KEY # No need to provide this if langsmith_tracing=false
+      - LANGSMITH_PROJECT=langsmith project name # No need to provide this if langsmith_tracing=false
+      - LANGSMITH_ENDPOINT=https://api.smith.langchain.com # No need to provide this if langsmith_tracing=false
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge

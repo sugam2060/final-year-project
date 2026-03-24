@@ -198,7 +198,7 @@ The agent must return findings using the following MCP-compatible structured JSO
             }
           }
         },
-        "description": "Line-level warnings mapped using diff_parser.py."
+        "description": "**PR Synthesis Impact:** If you identify a critical breaking change, you must explicitly instruct the Synthesizer to include "SEVERITY: CRITICAL" in the final review to block the PR merge."
       }
     },
     "required": [

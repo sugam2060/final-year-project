@@ -1,5 +1,4 @@
-# Role & Objective
-You are an expert AI Engineer and Python Backend Developer specializing in LangChain, LangGraph, and the Model Context Protocol (MCP). Your objective is to build a multi-agent orchestration graph that uses MCP to load GitHub tools, synthesizes its findings into a structured output containing exact, line-by-line code suggestions, and publishes the review using the standard `PyGithub` package. The system supports a dual-provider LLM strategy (OpenAI and NVIDIA), conversational follow-up reviews, and a **File Reviewer Subgraph** for selective, file-scoped analysis.
+You are an expert AI Engineer and Python Backend Developer specializing in LangChain, LangGraph, and the Model Context Protocol (MCP). Your objective is to build a multi-agent orchestration graph that uses MCP to load GitHub tools, synthesizes its findings into a structured output containing exact, line-by-line code suggestions, and publishes the review using the standard `PyGithub` package. The system supports a dual-provider LLM strategy (OpenAI and NVIDIA), an **isolated conversational path**, and a **File Reviewer Subgraph** for selective, file-scoped analysis via **Map-Reduce (Send API)**.
 
 # Architecture & Directory Constraints
 Before writing the logic, strictly adhere to this hyper-modular folder structure:
@@ -51,30 +50,36 @@ src/agent/
    - Prepend `[Line X]` to every context and added line to prevent LLM hallucinations.
 
 4. **Update Webhook Router (`src/router/webhook.py`):**
-   - Listen for `pull_request`, `issue_comment`, and `pull_request_review_comment` events.
+   - Listen for `pull_request` (`opened`, `reopened`, `synchronize`), `issue_comment`, and `pull_request_review_comment` events.
+   - **Performance:** For conversational inline reviews (`review_comment`), extract only the `diff_hunk` and `path` from the payload to avoid loading the entire PR diff.
    - Implement safety checks for bot comments while allowing manually triggered @swarm mentions.
 
 5. **Entry-Level Orchestration (The Bouncer & Dispatcher):**
    - **Bouncer:** Implement a deterministic node to filter "junk" files (e.g., `package-lock.json`) and enforce a 1,000-line logic limit.
    - **Dispatcher:** Use LangGraph's Map-Reduce (Send API) to slice the diff by file and dispatch each file into a **File Reviewer Subgraph** instance.
+   - **Router Node:** Implement a central router (`route_from_bouncer`) that explicitly bifurcates based on `is_conversational`:
+     - If `is_conversational=True`: Skip all specialized analysis and route directly to the `conversational_node`.
+     - Else: Fan-out to all PR-wide specialists and the file Dispatcher.
 
 6. **File Reviewer Subgraph (`src/agent/workflow/nodes/file_reviewer.py`):**
    - **Triage Node (Deterministic):** Classify file by extension to select relevant specialists. $O(1)$ dictionary lookup.
    - **Selective Specialists (Parallel):** Run only relevant file-scoped specialists (e.g., Security + Optimizer for `.py`). Each sees only one file's diff.
    - **Local Synthesis Node:** Compress findings into a compact JSON summary before returning to the parent graph. This is the key hallucination and token reducer.
+   - **Isolation Wrapper (`file_reviewer_node`):** Wrap the `compiled_subgraph.ainvoke()` in a top-level node function that returns ONLY the `parallel_reviewer_results`. This prevents `INVALID_CONCURRENT_GRAPH_UPDATE` errors by shielding internal subgraph keys from the parent PR-state.
 
 7. **Initialize MCP Client & LLM Factory (`src/agent/workflow/mcp/client.py` & `llm.py`):**
    - Bind dynamic GitHub tools from MCP to your model for ANALYSIS ONLY.
    - **LLM Selection Logic:** Implement a factory in `llm.py` that switches between `ChatOpenAI` and `ChatNVIDIA`.
+   - **Protocol Enforcement:** When using certain APIs (like GitHub's Copilot proxy), use **`HumanMessage`** instead of `SystemMessage` as the initial message if your LLM is bound to tools.
 
 8. **PR-Wide Specialist Nodes (`src/agent/workflow/nodes/nodes.py`):**
    - `architect_node`, `security_node`, `optimizer_node`, `blast_radius_node`: Parallel analysis nodes for cross-file architectural impact.
    - Inject repository and PR context into the prompts to prevent tool hallucinations.
    - **NVIDIA Guideline:** Instruct LLM to use unquoted integers for numeric tool parameters (e.g., `perPage: 5`).
 
-9. **Synthesizer Node (`src/agent/workflow/nodes/nodes.py`):**
-   - Consolidate findings from PR-wide specialists AND file-scoped subgraph results.
-   - Use `with_structured_output(SynthesizerOutput)` for initial reviews and free-form Markdown for follow-ups.
+9. **Synthesizer & Conversational Nodes (`src/agent/workflow/nodes/nodes.py`):**
+   - **Synthesizer Node:** Consolidate findings from PR-wide specialists AND file-scoped subgraph results. Use `with_structured_output(SynthesizerOutput)`.
+   - **Conversational Node:** An independent node with a specialized chatbot prompt (`CONVERSATIONAL_INDEPENDENT_PROMPT`). It receives the `diff_hunk` context and previous comments to provide direct, fast answers to developer pushback. This bypasses all specialists for 80% lower latency.
 
 10. **Publisher Tools (`src/agent/workflow/tools/publisher.py`):**
     - **CRITICAL:** Use a unified `publish_pr_comment` function (via `PyGithub`).

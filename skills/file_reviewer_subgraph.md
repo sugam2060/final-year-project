@@ -27,12 +27,11 @@ A pure Python function that classifies the file by extension and content pattern
 
 | File Pattern | Specialists Activated |
 | :--- | :--- |
-| `*.py`, `*.js`, `*.ts`, `*.java`, `*.go` | `architect`, `security`, `optimizer` |
-| `*.sql`, `*.prisma` | `security`, `blast_radius` |
-| `*.yaml`, `*.yml`, `*.toml`, `*.env*` | `security` |
+| `*.py`, `*.js`, `*.ts`, `*.java`, `*.go`, `*.rs`, `*.rb`, `*.php`, `*.cs` | `architect`, `security`, `optimizer` |
+| `*.sql`, `*.prisma`, `Dockerfile`, `docker-compose*` | `security`, `blast_radius` |
+| `*.yaml`, `*.yml`, `*.toml`, `*.env*`, `*.ini` | `security` |
 | `*.css`, `*.scss`, `*.html` | `architect` |
-| `*.md`, `*.txt`, `*.json` | *Skip all specialists (pass-through)* |
-| `Dockerfile`, `docker-compose*` | `security`, `blast_radius` |
+| `*.md`, `*.txt`, `*.json`, `*.csv`, `.gitignore` | *Skip (pass-through)* |
 
 **Design Constraints:**
 -   This node MUST be a **Deterministic Node** (no LLM). Use only `os.path.splitext()`, regex, and set lookups.
@@ -59,14 +58,24 @@ This is the **key hallucination reducer**: the parent Synthesizer sees a clean, 
 
 **Output Format:**
 ```json
-{
-  "filename": "src/auth/handler.py",
-  "severity": "HIGH",
-  "findings_count": 3,
   "compact_summary": "SQL injection risk in line 42; DRY violation with duplicate validation logic; O(n²) loop in batch processor.",
-  "inline_suggestions": []
+  "severity": "HIGH",
+  "findings_count": 3
 }
 ```
+
+### Step 4: Isolation Wrapper (`file_reviewer_node`)
+**CRITICAL:** To prevent `INVALID_CONCURRENT_GRAPH_UPDATE` errors in the parent graph, do NOT bind the compiled subgraph directly as a node. Instead, wrap it in a function:
+```python
+async def file_reviewer_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    # ainvoke returns the subgraph's internal state
+    result = await compiled_subgraph.ainvoke(state)
+    # Return ONLY the key that needs to be reduced into the parent state
+    return {
+        "parallel_reviewer_results": result.get("parallel_reviewer_results", [])
+    }
+```
+This shields the parent state from internal subgraph keys (like `code_diff` or `selected_specialists`) that aren't configured with reducers.
 
 ## 3. Subgraph State
 

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 TOOL_CALLING_GUIDELINE = """
 CRITICAL TOOL GUIDELINE:
-1. NEVER guess or assume a tool name (like 'pull_request_read'). ONLY use the exact functions explicitly provided in your tool-set.
+1. NEVER guess or assume a tool name (like 'pull_request_read'). ONLY use the exact functions explicitly provided in your tool-set. 
 2. If you are unsure or the required tool is missing, proceed with your analysis using ONLY the provided code diff and context.
 3. Adhere strictly to the JSON schema: numeric parameters MUST be unquoted integers.
 4. IMPORTANT: Do NOT pass full code diffs or huge strings into tool arguments (like file paths). Tools expect short, exact filenames or queries, not raw source code.

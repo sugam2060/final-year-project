@@ -65,7 +65,14 @@ async def publish_pr_comment(
             if github_comments:
                 kwargs["comments"] = github_comments
                 
-            pr.create_review(**kwargs)
+            try:
+                pr.create_review(event=event_type, body=comment_body, comments=github_comments if github_comments else [])
+            except Exception as e:
+                if "Can not approve your own pull request" in str(e):
+                    logger.warning("PR Owner detected: Falling back to 'COMMENT' review to avoid 422 error.")
+                    pr.create_review(event="COMMENT", body=comment_body, comments=github_comments if github_comments else [])
+                else:
+                    raise e
         else:
             # Conversational reply
             logger.info("Posting as general issue comment (Conversational).")
@@ -78,4 +85,6 @@ async def publish_pr_comment(
         logger.info("Successfully published to PR #%s in repository %s", pr_number, repo_name)
     except Exception as e:
         logger.error("Failed to publish PR comment for PR #%s: %s", pr_number, e)
-        raise
+        # Swallowing the error here to prevent the swarm from crashing, 
+        # but we should still log it.
+        pass

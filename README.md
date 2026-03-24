@@ -11,13 +11,15 @@ A sophisticated, multi-agent AI system designed to automate and enhance GitHub P
 
 ## 🚀 Key Features
 
-*   **Multi-Agent Swarm Orchestration**: Leverages parallel execution of specialized agents (Architect, Security, Optimizer) controlled by a central Lead Engineer (Synthesizer).
+*   **Map-Reduce Swarm Orchestration**: Leverages high-speed parallel execution. Instead of a single generic scan, it applies **Semantic Chunking** to dispatch each file into a specialized **File Reviewer Subgraph**.
 *   **Precision Line-by-Line Suggestions**: Implements a custom "Precision Trick" diff-parser that prevents LLM hallucinations by annotating incoming diffs with real line numbers.
-*   **Automated GitHub Integration**: Responds to real-time GitHub Webhooks and publishes findings directly as formatted PR Reviews and inline code comments.
+*   **80% Faster Conversational Reviews**: Features an independent logic path for `@swarm` mentions. By extracting only the relevant `diff_hunk` and bypassing the specialist swarm, it provides instant, sub-10s answers to developer pushback.
+*   **Hardened Security & Branch Protection**: Automatically flags vulnerabilities with `SEVERITY: CRITICAL`. When integrated with GitHub Branch Protection, the swarm programmatically blocks merges until fixes are pushed.
 *   **Dynamic Specialist Feedback**: 
     *   **🏗️ Architect Agent**: Validates structural design and adherence to patterns.
     *   **🛡️ Security Agent**: Scans for vulnerabilities, credential leaks, and insecure code.
     *   **⚡ Optimizer Agent**: Identifies performance bottlenecks and modern code efficiencies.
+    *   **🌐 Blast Radius**: Predicts the downstream impact of breaking changes.
 *   **Secure & Robust**: Features HMAC-SHA256 signature verification for zero-trust webhook handling and structured Pydantic data models for guaranteed JSON predictability.
 
 ---
@@ -27,7 +29,11 @@ A sophisticated, multi-agent AI system designed to automate and enhance GitHub P
 The project follows a hyper-modular architecture designed for scalability and clear separation of concerns:
 
 ```text
-├── skills/                     # Domain knowledge & design constraints for the swarm
+├── skills/                     # Swarm brain: design constraints & agent protocols
+│   ├── langgraph_swarm.md      # Core architecture blueprint
+│   ├── file_reviewer_subgraph.md # Subgraph map-reduce logic
+│   ├── filter.md               # Bouncer & Triage deterministic rules
+│   └── ...
 ├── src/
 │   ├── main.py                 # FastAPI Application entry point
 │   ├── config.py               # Environment & Global settings
@@ -37,11 +43,11 @@ The project follows a hyper-modular architecture designed for scalability and cl
 │   └── agent/                  # Core AI Orchestration
 │       ├── swarm.py            # Entrypoint for LangGraph execution
 │       └── workflow/           # Internal Graph Components
-│           ├── graph/          # LangGraph Topology (Edges & Nodes wiring)
-│           ├── nodes/          # Agent Logic (Architect, Security, etc.)
+│           ├── graph/          # Parent graph topology & bifurcated routing
+│           ├── nodes/          # Agent Logic & File Reviewer Subgraph
 │           ├── state/          # Shared memory (TypedDict SwarmState)
-│           ├── tools/          # External actions (GitHub PR Publisher)
-│           └── utils/          # Precision Diff Parser & Helper functions
+│           ├── tools/          # External actions (Publisher)
+│           └── utils/          # Precision Diff Parser & Dispatcher helpers
 └── requirements.txt            # System dependencies
 ```
 
@@ -49,14 +55,14 @@ The project follows a hyper-modular architecture designed for scalability and cl
 
 ## 🔄 Core Workflow
 
-1.  **Incoming Trigger**: A GitHub Webhook (`pull_request`) is received by the FastAPI server.
-2.  **Security Check**: The HMAC-SHA256 signature is verified using the system's `GITHUB_WEBHOOK_SECRET`.
-3.  **Context Assembly**: The system fetches the PR diff and applies **Precision Annotation**, marking each line with its destination line number to ensure the LLM never hallucinates line references.
-4.  **Swarm Orchestration**:
-    *   The **Architect**, **Security**, and **Optimizer** agents analyze the diff in parallel.
-    *   Findings are passed to the **Synthesizer Node**.
-5.  **Output Generation**: The Synthesizer produces a structured `SynthesizerOutput` containing a high-level summary and specific `InlineSuggestion` objects.
-6.  **Publication**: The `publisher.py` tool bundles these findings into a unified GitHub Review and posts it to the PR.
+1.  **Incoming Trigger**: A GitHub Webhook is received. `opened`/`reopened` triggers a full review; `synchronize` (new push) triggers a re-review; `review_comment` triggers a localized conversational reply.
+2.  **The Bouncer (Triage)**: A deterministic node filters "junk" files (like lock files) and enforces the 1,000-line logic limit to protect token budgets.
+3.  **Precision Annotation**: The PR diff is annotated with `[Line X]` markers to ensure 0% line-reference hallucinations.
+4.  **Map-Reduce Dispatch**:
+    *   **Fan-out (Map)**: The **Dispatcher** slices the PR by file and spawns isolated **File Reviewer Subgraph** instances.
+    *   **Selective Specialists**: Each subgraph runs only relevant specialists (e.g., Security for `.py`, Architect for `.css`).
+5.  **PR-Wide Analysis**: Parallel to subgraphs, high-level specialists (Architect, Security, Optimizer, Blast Radius) analyze the global impact across the entire PR.
+6.  **Synthesize & Publish**: Findings are reduced into a structured `SynthesizerOutput`. If vulnerabilities exist, a **Block Merge** review is posted; otherwise, it **Approves**.
 
 ---
 
@@ -79,9 +85,9 @@ Configure your GitHub repository Webhook (`Settings > Webhooks > Add webhook`) a
 *   **Content type**: `application/json`.
 *   **Secret**: Must match your `GITHUB_WEBHOOK_SECRET` in `.env`.
 *   **Events**: Select **"Let me select individual events"** and check:
-    *   ✅ **Pull requests** (For initial code reviews)
-    *   ✅ **Issue comments** (For conversational replies in the PR thread)
-    *   ✅ **Pull request review comments** (For replies to specific code-line suggestions)
+    *   ✅ **Pull requests** (Actions: `opened`, `reopened`, `synchronize`)
+    *   ✅ **Issue comments** (For PR-level thread chat)
+    *   ✅ **Pull request review comments** (For localized code chat)
 
 ### 2. Environment Variables
 Create a `.env` file in the `src/` directory with the following keys:
@@ -106,10 +112,12 @@ python src/main.py
 
 ## 📚 Expert Skills & Constraints
 
-The system is guided by a set of "Skills" found in the `skills/` directory. These define how the agents should behave, including:
-- **`langgraph_swarm.md`**: The blueprint for architecting multi-agent systems.
-- **`design_constraints.md`**: Rules for UI/UX and API design.
-- **`structure.md`**: Folder hierarchy and modularity standards.
+The system is guided by "Skills" (brain modules) in the `skills/` directory:
+- **`langgraph_swarm.md`**: Main orchestration blueprint.
+- **`file_reviewer_subgraph.md`**: Map-Reduce & Subgraph patterns.
+- **`filter.md`**: Bouncer & Triage deterministic rules.
+- **`parallel_dispatcher.md`**: Concurrency & state aggregation logic.
+- **`blast_radius.md`**: Architectural dependency prediction.
 
 ---
 

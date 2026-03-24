@@ -16,8 +16,8 @@ description: The gatekeeper of the multi-agent code review system, filtering "ju
 1.  **The .swarmignore Purge:** Ingest the raw PR diff and instantly drop any file modifications that match the ignore list (e.g., `package-lock.json`, `*.svg`, `*.min.js`, mock data CSVs).
 2.  **Core Logic Calculation:** Count the actual added and modified lines of code (excluding comments and whitespace) in the remaining, filtered diff.
 3.  **The "Senior Pushback" Decision:** Evaluate the core logic line count against the hard limit (1,000 lines).
-    -   **If PASS:** Pass the lightweight, filtered diff to the **Dispatcher**, which slices by file and dispatches into **File Reviewer Subgraph** instances.
-    -   **If FAIL:** Immediately halt the swarm execution and route directly to the Synthesizer with a rejection comment.
+    -   **If PASS:** Set `status="PROCEED"` and populate `filtered_diff_payload`.
+    -   **If FAIL:** Immediately halt the swarm execution, set `status="REJECT"`, and route directly to the Synthesizer with a rejection comment.
 
 ## 3. Design Constraints & Performance
 -   **Fully Asynchronous:** Implementation must be 100% `async` to prevent blocking the event loop during diff processing.
