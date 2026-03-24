@@ -156,6 +156,46 @@ The system is guided by "Skills" (brain modules) in the `skills/` directory:
 
 ---
 
+## 🚀 Getting Started (Your First Review)
+
+Once your bot is running, follow these steps to trigger a review:
+
+1.  **Create a Branch**: 
+    ```bash
+    git checkout -b feature/cool-new-code
+    ```
+2.  **Commit & Push**: Make some changes and push to GitHub.
+    ```bash
+    git add .
+    git commit -m "add experimental feature"
+    git push origin feature/cool-new-code
+    ```
+3.  **Open a Pull Request**: On GitHub, open a PR from your new branch to `main`.
+4.  **The Swarm Arrives**: Within seconds, the swarm will analyze your code and post a formal **PR Review**.
+
+---
+
+## 💬 Conversational Feedback — The `@swarm` Feature
+
+If you disagree with the bot or need more explanation on a specific suggestion:
+
+*   **Reply to a Comment**: Mention **`@swarm`** in any PR comment thread.
+*   **The Robot's Response**: The bot will immediately activate in its **Conversational Mode**, analyze the context of your specific question, and reply to you directly.
+*   **Speed**: Conversational replies are optimized for speed and usually respond in **under 10 seconds.**
+
+---
+
+## 🛡️ Enforcing AI Reviews (Branch Protection)
+
+To make the AI Swarm a mandatory "gatekeeper" for your project, you should configure **Branch Protection Rules** (Settings > Code and automation > Branches) for your default branch (e.g., `main`):
+
+*   ✅ **Require a pull request before merging**: Forces everyone to use the PR flow.
+*   ✅ **Require approvals**: Set "Required number of approvals before merging" to **1** (or more).
+*   ✅ **Dismiss stale pull request approvals when new commits are pushed**: **VITAL**. Forces the swarm to re-review every time new code is pushed.
+*   ✅ **Block force pushes**: Protects the PR record and history integrity.
+
+---
+
 > [!CAUTION]
 > **Self-Review Limitation**: GitHub does not allow users to **Approve** or **Request Changes** on their own Pull Requests. 
 > - If the `GITHUB_TOKEN` belongs to the **same user** who created the PR, the swarm will automatically post its findings as a **Standard PR Comment** (instead of a Review) to avoid a GitHub API error. 
