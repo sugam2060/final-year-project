@@ -22,7 +22,8 @@ async def get_tool_bound_llm():
             model="meta/llama-3.1-405b-instruct",
             api_key=str(settings.NVIDIA_API_KEY),
             temperature=0,
-            timeout=30
+            # Move timeout to model_kwargs to silence warnings
+            model_kwargs={"timeout": 30}
         )
     else:
         # Default to GPT-4o
@@ -30,7 +31,7 @@ async def get_tool_bound_llm():
             model="gpt-4o", 
             temperature=0,
             api_key=str(settings.OPENAI_API_KEY),
-            timeout=30
+            model_kwargs={"timeout": 30}
         )
     
     # 3. Retrieve tools from the remote MCP server

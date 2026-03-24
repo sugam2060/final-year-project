@@ -33,40 +33,47 @@ async def publish_pr_comment(
         repo = g.get_repo(repo_name)
         pr = repo.get_pull(pr_number)
         
-        if commit_sha and inline_suggestions:
-            logger.info("Validating %s inline suggestions against PR files...", len(inline_suggestions))
-            
-            # Fetch valid file paths from the PR to prevent 422 errors
-            pr_files = [f.filename for f in pr.get_files()]
-            github_comments = []
-            
-            for suggestion in inline_suggestions:
-                if suggestion.file_path in pr_files and suggestion.line_number > 0:
-                    github_comments.append({
-                        "path": suggestion.file_path,
-                        "line": suggestion.line_number,
-                        "body": suggestion.suggestion_body
-                    })
-                else:
-                    logger.warning(
-                        "Dropping invalid suggestion for PR #%s: Path '%s' (valid: %s), Line %s",
-                        pr_number, suggestion.file_path, suggestion.file_path in pr_files, suggestion.line_number
-                    )
+        if commit_sha:
+            # Determine Review State
+            event_type = "APPROVE"
+            if "SEVERITY: CRITICAL" in comment_body.upper():
+                event_type = "REQUEST_CHANGES"
 
-            if github_comments:
-                logger.info("Creating bundled PR review with %s valid inline suggestions...", len(github_comments))
-                pr.create_review(
-                    commit=repo.get_commit(commit_sha),
-                    body=comment_body,
-                    event="COMMENT",
-                    comments=github_comments
+            # PROACTIVE SELF-REVIEW CHECK:
+            # GitHub does not allow a user to Approve or Request Changes on their own PR.
+            # Detect this upfront and use COMMENT to avoid the 422 error entirely.
+            authenticated_user = g.get_user().login
+            pr_author = pr.user.login
+            if authenticated_user == pr_author:
+                logger.warning(
+                    "Self-Review detected: Bot user '%s' is the PR author. "
+                    "Forcing event_type to 'COMMENT' (GitHub blocks Approve/Request Changes on own PRs).",
+                    authenticated_user
                 )
-            else:
-                logger.info("No valid inline suggestions remain. Falling back to issue comment.")
-                pr.create_issue_comment(f"{comment_body}\n\n*Note: Suggestions were found but their file paths could not be accurately resolved.*")
+                event_type = "COMMENT"
+
+            github_comments = []
+            if inline_suggestions:
+                logger.info("Validating %s inline suggestions against PR files...", len(inline_suggestions))
+                pr_files = [f.filename for f in pr.get_files()]
+                for suggestion in inline_suggestions:
+                    if suggestion.file_path in pr_files and suggestion.line_number > 0:
+                        github_comments.append({
+                            "path": suggestion.file_path,
+                            "line": suggestion.line_number,
+                            "body": suggestion.suggestion_body
+                        })
+                    else:
+                        logger.warning(
+                            "Dropping invalid suggestion for PR #%s: Path '%s' (valid: %s), Line %s",
+                            pr_number, suggestion.file_path, suggestion.file_path in pr_files, suggestion.line_number
+                        )
+
+            logger.info("Submitting %s PR Review with %s inline suggestions.", event_type, len(github_comments))
+            pr.create_review(event=event_type, body=comment_body, comments=github_comments if github_comments else [])
         else:
-            # Conversational reply or review with no suggestions
-            logger.info("Posting as general issue comment (Conversational/No Suggestions).")
+            # Conversational reply
+            logger.info("Posting as general issue comment (Conversational).")
             pr.create_issue_comment(comment_body)
             
         return True
@@ -76,4 +83,6 @@ async def publish_pr_comment(
         logger.info("Successfully published to PR #%s in repository %s", pr_number, repo_name)
     except Exception as e:
         logger.error("Failed to publish PR comment for PR #%s: %s", pr_number, e)
-        raise
+        # Swallowing the error here to prevent the swarm from crashing, 
+        # but we should still log it.
+        pass

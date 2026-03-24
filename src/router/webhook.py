@@ -43,6 +43,10 @@ async def github_webhook_receiver(request: Request):
     Webhook receiver for GitHub events.
     Handles signature verification and filters for Pull Request and Issue Comment actions.
     """
+    # 0. Log reception (Diagnostic)
+    github_event = request.headers.get("X-GitHub-Event", "unknown")
+    logger.info(">>> [WEBHOOK] Received %s event", github_event)
+    
     # 1. Security First: Verify Signature
     await verify_signature(request)
     
@@ -81,8 +85,8 @@ async def _handle_pull_request_event(payload: dict):
         return {"status": "ignored", "reason": "incomplete_pr_data"}
 
     # Filter for relevant actions
-    # We remove 'synchronize' to prevent the swarm from triggering on every push to an open PR.
-    if pr_event.action not in ["opened", "reopened"]:
+    # We include 'synchronize' to allow the swarm to review new commits pushed to an open PR
+    if pr_event.action not in ["opened", "reopened", "synchronize"]:
         return {"status": "ignored", "action": pr_event.action}
 
     # Constraint 1: Full Async orchestration
@@ -98,7 +102,7 @@ async def _handle_pull_request_event(payload: dict):
                 if file.patch and len(file.patch) < 51200:  # 50KB Guardrail
                     ext = "." + file.filename.split(".")[-1] if "." in file.filename else ""
                     if ext.lower() not in ['.png', '.jpg', '.zip', '.pem']:
-                         diff_chunks.append(f"File: {file.filename}\n{file.patch}")
+                         diff_chunks.append(f"diff --git a/{file.filename} b/{file.filename}\n{file.patch}")
             
             return "\n\n".join(diff_chunks)
         
@@ -112,6 +116,7 @@ async def _handle_pull_request_event(payload: dict):
                 code_diff=diff_string,
                 repo_name=pr_event.repository.full_name,
                 commit_sha=pr_event.pull_request.head.sha,
+                pr_author=payload.get("pull_request", {}).get("user", {}).get("login", "developer"),
                 is_conversational=False,
                 user_message="",
                 conversation_history=""
@@ -174,7 +179,7 @@ async def _handle_issue_comment_event(payload: dict):
                 if file.patch and len(file.patch) < 51200:
                     ext = "." + file.filename.split(".")[-1] if "." in file.filename else ""
                     if ext.lower() not in ['.png', '.jpg', '.zip', '.pem']:
-                        diff_chunks.append(f"File: {file.filename}\n{file.patch}")
+                        diff_chunks.append(f"diff --git a/{file.filename} b/{file.filename}\n{file.patch}")
             diff_string = "\n\n".join(diff_chunks)
 
             # 2. Fetch the last 5 comments for conversation context
@@ -198,6 +203,7 @@ async def _handle_issue_comment_event(payload: dict):
                 code_diff=diff_string,
                 repo_name=repo_name,
                 commit_sha=commit_sha,
+                pr_author=comment_author,
                 is_conversational=True,
                 user_message=comment_body,
                 conversation_history=conversation_history
@@ -249,17 +255,23 @@ async def _handle_review_comment_event(payload: dict):
             repo = github_client.get_repo(repo_name)
             pr = repo.get_pull(pr_number)
 
-            # Fetch diff
-            files = pr.get_files()
-            diff_chunks = []
-            for file in files:
-                if file.patch and len(file.patch) < 51200:
-                    ext = "." + file.filename.split(".")[-1] if "." in file.filename else ""
-                    if ext.lower() not in ['.png', '.jpg', '.zip', '.pem']:
-                        diff_chunks.append(f"File: {file.filename}\n{file.patch}")
-            diff_string = "\n\n".join(diff_chunks)
+            # 1. OPTIMIZATION: Only review the specific lines the user commented on.
+            path = payload.get("comment", {}).get("path")
+            diff_hunk = payload.get("comment", {}).get("diff_hunk")
+            if path and diff_hunk:
+                diff_string = f"diff --git a/{path} b/{path}\n{diff_hunk}"
+            else:
+                # Fallback to full PR diff if the hunk is somehow missing
+                files = pr.get_files()
+                diff_chunks = []
+                for file in files:
+                    if file.patch and len(file.patch) < 51200:
+                        ext = "." + file.filename.split(".")[-1] if "." in file.filename else ""
+                        if ext.lower() not in ['.png', '.jpg', '.zip', '.pem']:
+                            diff_chunks.append(f"diff --git a/{file.filename} b/{file.filename}\n{file.patch}")
+                diff_string = "\n\n".join(diff_chunks)
 
-            # Fetch history (mixing issue comments and review comments for better context)
+            # 2. Fetch history (mixing issue comments and review comments for better context)
             issue_comments = list(pr.get_issue_comments())[-3:]
             review_comments = list(pr.get_review_comments())[-3:]
             recent_comments = sorted(issue_comments + review_comments, key=lambda x: x.created_at)
@@ -278,6 +290,7 @@ async def _handle_review_comment_event(payload: dict):
                 code_diff=diff_string,
                 repo_name=repo_name,
                 commit_sha=commit_sha,
+                pr_author=comment_author,
                 is_conversational=True,
                 user_message=comment_body,
                 conversation_history=conversation_history

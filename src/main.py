@@ -20,5 +20,5 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    # Use import string for reload support
-    uvicorn.run("main:app", host="localhost", port=8000, reload=True)
+    # Use 0.0.0.0 for ngrok accessibility and explicit log level
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
