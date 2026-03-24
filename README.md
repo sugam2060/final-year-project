@@ -7,6 +7,13 @@
 
 A sophisticated, multi-agent AI system designed to automate and enhance GitHub Pull Request reviews. Built on top of **LangGraph**, **FastAPI**, and the **Model Context Protocol (MCP)**, this system orchestrates a "swarm" of specialized AI agents to analyze code changes and provide expert feedback directly on GitHub.
 
+> [!CAUTION]
+> ### 🚨 EXPERIMENTAL SYSTEM — READ BEFORE USE
+> This project is designed for **testing, research, and experimental purposes only.**
+> - **AI Hallucinations**: AI-generated code reviews can contain inaccuracies, hallucinations, or "wrong" suggestions.
+> - **Do Not Rely Solely on AI**: Never merge code based ONLY on this system's feedback. **Always perform a double-check** and have a human developer verify every claim made by the swarm.
+> - **Security Notice**: While the swarm is designed to find bugs, it is NOT a replacement for a professional security audit or a certified static analysis tool (SAST).
+
 ---
 
 ## 🚀 Key Features
