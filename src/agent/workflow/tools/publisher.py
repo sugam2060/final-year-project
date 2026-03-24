@@ -34,10 +34,23 @@ async def publish_pr_comment(
         pr = repo.get_pull(pr_number)
         
         if commit_sha:
-            # Determine Review State (Option B implementation)
+            # Determine Review State
             event_type = "APPROVE"
             if "SEVERITY: CRITICAL" in comment_body.upper():
                 event_type = "REQUEST_CHANGES"
+
+            # PROACTIVE SELF-REVIEW CHECK:
+            # GitHub does not allow a user to Approve or Request Changes on their own PR.
+            # Detect this upfront and use COMMENT to avoid the 422 error entirely.
+            authenticated_user = g.get_user().login
+            pr_author = pr.user.login
+            if authenticated_user == pr_author:
+                logger.warning(
+                    "Self-Review detected: Bot user '%s' is the PR author. "
+                    "Forcing event_type to 'COMMENT' (GitHub blocks Approve/Request Changes on own PRs).",
+                    authenticated_user
+                )
+                event_type = "COMMENT"
 
             github_comments = []
             if inline_suggestions:
@@ -57,22 +70,7 @@ async def publish_pr_comment(
                         )
 
             logger.info("Submitting %s PR Review with %s inline suggestions.", event_type, len(github_comments))
-            kwargs = {
-                "commit": repo.get_commit(commit_sha),
-                "body": comment_body,
-                "event": event_type
-            }
-            if github_comments:
-                kwargs["comments"] = github_comments
-                
-            try:
-                pr.create_review(event=event_type, body=comment_body, comments=github_comments if github_comments else [])
-            except Exception as e:
-                if "Can not approve your own pull request" in str(e):
-                    logger.warning("PR Owner detected: Falling back to 'COMMENT' review to avoid 422 error.")
-                    pr.create_review(event="COMMENT", body=comment_body, comments=github_comments if github_comments else [])
-                else:
-                    raise e
+            pr.create_review(event=event_type, body=comment_body, comments=github_comments if github_comments else [])
         else:
             # Conversational reply
             logger.info("Posting as general issue comment (Conversational).")

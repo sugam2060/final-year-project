@@ -72,12 +72,18 @@ The project follows a hyper-modular architecture designed for scalability and cl
 
 #### 🔏 Personal Access Token (PAT)
 The system requires a GitHub PAT to post reviews and fetch PR data.
-*   **Classic PAT**: Ensure the `repo` scope is selected (Full control of repositories).
-*   **Fine-grained PAT**: Grant access to:
-    *   `Pull Requests` (Read & Write) - To post bundled reviews/suggestions.
-    *   `Issues` (Read & Write) - To post conversational replies to `@swarm` mentions.
-    *   `Contents` (Read-only) - To access repository source code for analysis.
-    *   `Metadata` (Read-only) - Mandatory for all tokens.
+
+> [!IMPORTANT]
+> **Use a Separate Bot Account**: For the best experience, we strongly recommend creating a dedicated GitHub account (e.g., `my-swarm-bot`) to act as the reviewer. 
+> 1. Create a new GitHub account.
+> 2. Add this account as a **Collaborator** on your target repository (`Settings > Collaborators > Add people`).
+> 3. Generate a **Classic PAT** from the **Bot account**.
+
+*   **Classic PAT (Recommended)**: Go to `Settings > Developer settings > Tokens (classic)`. Ensure the **`repo`** scope is selected. This is required for bot accounts on personal repositories.
+*   **Fine-grained PAT**: Only recommended if your repository is part of an **Organization**. grant access to:
+    *   `Pull Requests` (Read & Write)
+    *   `Issues` (Read & Write)
+    *   `Contents` (Read-only)
 
 #### ⚓ Webhook Setup
 Configure your GitHub repository Webhook (`Settings > Webhooks > Add webhook`) as follows:
@@ -120,6 +126,12 @@ The system is guided by "Skills" (brain modules) in the `skills/` directory:
 - **`blast_radius.md`**: Architectural dependency prediction.
 
 ---
+
+> [!CAUTION]
+> **Self-Review Limitation**: GitHub does not allow users to **Approve** or **Request Changes** on their own Pull Requests. 
+> - If the `GITHUB_TOKEN` belongs to the **same user** who created the PR, the swarm will automatically post its findings as a **Standard PR Comment** (instead of a Review) to avoid a GitHub API error. 
+> - To see "Green" approvals or "Red" blocks, use a separate bot account as a collaborator.
+
 
 > [!TIP]
 > **Why LangGraph?** We use LangGraph over simpler agent chains to manage cycles, complex states, and parallel "Swarm" behaviors reliably.

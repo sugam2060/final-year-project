@@ -293,8 +293,16 @@ async def synthesizer_node(state: SwarmState) -> Dict[str, Any]:
     
     result = await llm.ainvoke([HumanMessage(content=prompt)])
     
+    # ROBUSTNESS FIX: Handle cases where the LLM fails to produce a structured output (result is None)
+    if result is None:
+        logger.error("Synthesizer LLM failed to generate structured output for PR #%s. Falling back to default empty response.", state.get("pr_number"))
+        return {
+            "final_comment": "⚠️ **The Swarm was able to analyze the code but failed to synthesize the final summary.** Please check the specialist reviews in the logs.",
+            "inline_suggestions": []
+        }
+
     # Merge manual suggestions from parallel reviewers if any (to be implemented)
-    all_suggestions = result.inline_suggestions + state.get("inline_suggestions", [])
+    all_suggestions = result.inline_suggestions + (state.get("inline_suggestions") or [])
     
     return {
         "final_comment": result.general_summary, 
