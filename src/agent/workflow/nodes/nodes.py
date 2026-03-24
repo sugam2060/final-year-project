@@ -152,17 +152,17 @@ async def bouncer_node(state: SwarmState) -> Dict[str, Any]:
     ignore_patterns = {".swarmignore", "*.svg", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "*.min.js"}
     filtered_diff = apply_antigravity_filter(state["code_diff"], ignore_patterns)
     
-    guardrail = enforce_size_guardrail(filtered_diff, max_lines=1000)
+    guardrail = enforce_size_guardrail(filtered_diff, max_lines=1500)
     
     if not guardrail["is_valid"]:
-        logger.warning("PR #%s REJECTED: %s core lines exceeds 1,000 line limit.", 
+        logger.warning("PR #%s REJECTED: %s core lines exceeds 1,500 line limit.", 
                        state.get("pr_number"), guardrail["line_count"])
                         
         return {
             "status": "REJECT",
             "rejection_comment": (
                 f"❌ **PR Too Large ({guardrail['line_count']} lines)**\n\n"
-                "To maintain review quality, the Swarm enforces a strict limit of 1,000 "
+                "To maintain review quality, the Swarm enforces a strict limit of 1,500 "
                 "core logic lines per PR. Please break this change into smaller, "
                 "reviewable chunks."
             ),
