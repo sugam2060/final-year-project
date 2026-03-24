@@ -11,6 +11,7 @@ async def run_swarm(
     code_diff: str,
     repo_name: str,
     commit_sha: str,
+    pr_author: str,
     is_conversational: bool = False,
     user_message: str = "",
     conversation_history: str = ""
@@ -24,7 +25,7 @@ async def run_swarm(
     - Conversational Review (is_conversational=True): Follow-up reply to developer pushback.
     """
     mode = "CONVERSATIONAL" if is_conversational else "INITIAL"
-    logger.info("--- LANGGRAPH SWARM ACTIVATED [%s] FOR %s PR #%s ---", mode, repo_name, pr_number)
+    logger.info("--- LANGGRAPH SWARM ACTIVATED [%s] FOR %s PR #%s (Author: %s) ---", mode, repo_name, pr_number, pr_author)
     
     # Pre-parse the diff to include line numbers (Precision Trick)
     annotated_diff = annotate_diff_with_line_numbers(code_diff)
@@ -34,6 +35,7 @@ async def run_swarm(
         "pr_number": pr_number,
         "repo_name": repo_name,
         "commit_sha": commit_sha,
+        "pr_author": pr_author,
         "code_diff": code_diff,
         "annotated_diff": annotated_diff,
         "is_conversational": is_conversational,
@@ -49,7 +51,17 @@ async def run_swarm(
     
     try:
         # 1. Orchestrate analysis (Specialists fan-out)
-        result = await swarm_app.ainvoke(initial_state)
+        result = await swarm_app.ainvoke(
+            initial_state, 
+            config={
+                "run_name": f"Swarm Reviewer PR #{pr_number} [{mode}]",
+                "metadata": {
+                    "repo": repo_name,
+                    "pr": pr_number,
+                    "mode": mode
+                }
+            }
+        )
         
         # 2. Extract synthesized findings
         final_review = result.get("final_comment")

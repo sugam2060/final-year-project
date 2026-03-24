@@ -10,3 +10,4 @@ langchain-nvidia-ai-endpoints
 PyGithub
 langchain-mcp-adapters
 mcp
+langsmith
