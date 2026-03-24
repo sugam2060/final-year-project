@@ -193,6 +193,7 @@ To make the AI Swarm a mandatory "gatekeeper" for your project, you should confi
 *   ✅ **Require approvals**: Set "Required number of approvals before merging" to **1** (or more).
 *   ✅ **Dismiss stale pull request approvals when new commits are pushed**: **VITAL**. Forces the swarm to re-review every time new code is pushed.
 *   ✅ **Block force pushes**: Protects the PR record and history integrity.
+*   ⚠️ **Allow specified actors to bypass pull request requirements**: (Optional but recommended) Grant bypass access to yourself (`your-account`) to ensure you can still merge if the bot server is down.
 
 ---
 
