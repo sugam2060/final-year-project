@@ -56,7 +56,7 @@ The project follows a hyper-modular architecture designed for scalability and cl
 ## 🔄 Core Workflow
 
 1.  **Incoming Trigger**: A GitHub Webhook is received. `opened`/`reopened` triggers a full review; `synchronize` (new push) triggers a re-review; `review_comment` triggers a localized conversational reply.
-2.  **The Bouncer (Triage)**: A deterministic node filters "junk" files (like lock files) and enforces the 1,000-line logic limit to protect token budgets.
+2.  **The Bouncer (Triage)**: A deterministic node filters "junk" files (like lock files) and enforces a strict **1,500-line logic limit** per PR to protect token budgets and maintain high review quality.
 3.  **Precision Annotation**: The PR diff is annotated with `[Line X]` markers to ensure 0% line-reference hallucinations.
 4.  **Map-Reduce Dispatch**:
     *   **Fan-out (Map)**: The **Dispatcher** slices the PR by file and spawns isolated **File Reviewer Subgraph** instances.
