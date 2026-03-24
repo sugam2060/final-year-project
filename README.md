@@ -102,15 +102,37 @@ Configure your GitHub repository Webhook (`Settings > Webhooks > Add webhook`) a
     *   ✅ **Issue comments** (For PR-level thread chat)
     *   ✅ **Pull request review comments** (For localized code chat)
 
-### 2. Environment Variables
-Create a `.env` file in the `src/` directory with the following keys:
+### 2. Environment Setup & API Keys
+
+Get your API keys from these official providers:
+*   🔑 **GitHub PAT**: [GitHub Settings > Developer Settings](https://github.com/settings/tokens) (Recommended: **Classic Token** with `repo` scope).
+*   🤖 **NVIDIA API (Llama 3.1 405B)**: [NVIDIA API Catalog](https://build.nvidia.com/) (Search for `meta/llama-3.1-405b-instruct`).
+*   🧠 **OpenAI API (GPT-4o)**: [OpenAI Platform](https://platform.openai.com/api-keys).
+
+#### Option A: Docker Compose (Production-Ready 🚀)
+The easiest way is to use the provided `docker-compose.yml`. Update the environment variables directly:
+```yaml
+services:
+  swarm-bot:
+    environment:
+      - GITHUB_TOKEN=ghp_...
+      - GITHUB_WEBHOOK_SECRET=your_secret
+      - LLM_PROVIDER=NVIDIA # Or OPENAI
+      - NVIDIA_API_KEY=nvapi-...
+```
+Then run:
+```bash
+docker-compose up -d
+```
+
+#### Option B: Local Development
+Create a `.env` file in the `src/` directory:
 ```env
 GITHUB_TOKEN=your_personal_access_token
 GITHUB_WEBHOOK_SECRET=your_webhook_shared_secret
 LLM_PROVIDER=NVIDIA # Options: OPENAI, NVIDIA
 OPENAI_API_KEY=sk-...
 NVIDIA_API_KEY=nvapi-...
-GITHUB_BOT_USERNAME=your_bot_username
 ```
 
 ### 3. Running the Server
