@@ -11,3 +11,7 @@ PyGithub
 langchain-mcp-adapters
 mcp
 langsmith
+langgraph-checkpoint-postgres
+asyncpg
+psycopg[binary]
+psycopg-pool

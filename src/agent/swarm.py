@@ -1,5 +1,7 @@
 import logging
-from agent.workflow.graph.graph import swarm_app
+from typing import List, Optional
+from langchain_core.messages import AnyMessage, HumanMessage
+from agent.workflow.graph.graph import get_swarm_app
 from agent.workflow.tools.publisher import publish_pr_comment
 from agent.workflow.utils.diff_parser import annotate_diff_with_line_numbers
 
@@ -14,7 +16,8 @@ async def run_swarm(
     pr_author: str,
     is_conversational: bool = False,
     user_message: str = "",
-    conversation_history: str = ""
+    messages: Optional[List[AnyMessage]] = None,
+    config: Optional[dict] = None
 ):
     """
     Entrypoint for the LangGraph swarm orchestration.
@@ -30,6 +33,10 @@ async def run_swarm(
     # Pre-parse the diff to include line numbers (Precision Trick)
     annotated_diff = annotate_diff_with_line_numbers(code_diff)
     
+    # NEW: Initialize message list if not provided
+    if messages is None:
+        messages = [HumanMessage(content=user_message)] if is_conversational else []
+
     # Initialize the swarm's shared memory (state)
     initial_state = {
         "pr_number": pr_number,
@@ -40,28 +47,28 @@ async def run_swarm(
         "annotated_diff": annotated_diff,
         "is_conversational": is_conversational,
         "user_message": user_message,
-        "conversation_history": conversation_history,
+        "messages": messages,
         "architect_review": "",
         "security_review": "",
         "optimizer_review": "",
         "blast_radius_review": "",
         "final_comment": "",
-        "inline_suggestions": []
+        "inline_suggestions": [],
+        "summary": ""
     }
     
+    # DEFAULT Config if none provided
+    if config is None:
+        config = {
+            "configurable": {"thread_id": f"pr-{pr_number}"},
+            "run_name": f"Swarm Reviewer PR #{pr_number} [{mode}]",
+            "metadata": {"repo": repo_name, "pr": pr_number, "mode": mode}
+        }
+
     try:
         # 1. Orchestrate analysis (Specialists fan-out)
-        result = await swarm_app.ainvoke(
-            initial_state, 
-            config={
-                "run_name": f"Swarm Reviewer PR #{pr_number} [{mode}]",
-                "metadata": {
-                    "repo": repo_name,
-                    "pr": pr_number,
-                    "mode": mode
-                }
-            }
-        )
+        swarm_app = get_swarm_app()
+        result = await swarm_app.ainvoke(initial_state, config=config)
         
         # 2. Extract synthesized findings
         final_review = result.get("final_comment")

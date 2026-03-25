@@ -25,6 +25,8 @@ A sophisticated, multi-agent AI system designed to automate and enhance GitHub P
 *   **Dynamic Specialist Feedback**: 
     *   **🏗️ Architect Agent**: Validates structural design and adherence to patterns.
     *   **🛡️ Security Agent**: Scans for vulnerabilities, credential leaks, and insecure code.
+21: *   **🧠 Thread Weaver (Short-Term Memory)**: Uses **PostgreSQL-backed persistence** to remember past PR comments. It allows you to have a continuous technical discussion with the bot using the `@swarm` trigger.
+22: *   **🧹 The Archivist (Context Optimization)**: Automatically handles token limits. It follows a **6:4 Compression Rule**: Once a conversation reaches 6 messages, it summarizes the oldest 4 to keep the AI focused and cost-efficient.
     *   **⚡ Optimizer Agent**: Identifies performance bottlenecks and modern code efficiencies.
     *   **🌐 Blast Radius**: Predicts the downstream impact of breaking changes.
 *   **Secure & Robust**: Features HMAC-SHA256 signature verification for zero-trust webhook handling and structured Pydantic data models for guaranteed JSON predictability.
@@ -119,7 +121,9 @@ services:
       - GITHUB_WEBHOOK_SECRET=your_secret
       - LLM_PROVIDER=NVIDIA # Or OPENAI
       - NVIDIA_API_KEY=nvapi-...
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-db:5432/postgres
 ```
+*Note: The `docker-compose.yml` automatically spins up a PostgreSQL container for your bot.*
 Then run:
 ```bash
 docker-compose up -d
@@ -133,7 +137,9 @@ GITHUB_WEBHOOK_SECRET=your_webhook_shared_secret
 LLM_PROVIDER=NVIDIA # Options: OPENAI, NVIDIA
 OPENAI_API_KEY=sk-...
 NVIDIA_API_KEY=nvapi-...
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 ```
+*Note: You must have a PostgreSQL instance running locally if not using Docker.*
 
 ### 3. Running the Server
 Install dependencies and start the FastAPI server:

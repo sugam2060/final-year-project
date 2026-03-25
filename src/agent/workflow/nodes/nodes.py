@@ -4,6 +4,25 @@ from langchain_core.messages import HumanMessage
 from agent.workflow.llm.llm import get_tool_bound_llm
 from agent.workflow.state.state import SwarmState
 
+async def get_fast_llm():
+    """Returns a standard LLM without the MCP tool-binding overhead for chat/summarization."""
+    from langchain_openai import ChatOpenAI
+    from langchain_nvidia_ai_endpoints import ChatNVIDIA
+    from config import settings
+    
+    provider = settings.LLM_PROVIDER
+    if provider == "NVIDIA":
+        return ChatNVIDIA(
+            model="meta/llama-3.1-405b-instruct",
+            api_key=str(settings.NVIDIA_API_KEY),
+            temperature=0.4
+        )
+    return ChatOpenAI(
+        model="gpt-4o", 
+        temperature=0.4,
+        api_key=str(settings.OPENAI_API_KEY)
+    )
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -101,10 +120,13 @@ Blast Radius Analysis: {blast_radius_review}
 
 CONVERSATIONAL_INDEPENDENT_PROMPT = """You are the Lead Engineer conducting an interactive code review discussion with developer @{pr_author}.
 
+CURRENT SUMMARY OF BACKGROUND CONTEXT:
+{summary}
+
 DEVELOPER'S QUERY/LATEST MESSAGE:
 {user_message}
 
-CONVERSATION CONTEXT:
+CONVERSATION CONTEXT (Active Window):
 {conversation_history}
 
 CODE DIFF / CONTEXT:
@@ -113,6 +135,7 @@ CODE DIFF / CONTEXT:
 INSTRUCTIONS:
 - Directly answer the developer's specific query about the code.
 - Analyze the provided code diff carefully.
+- Refer to the "BACKGROUND CONTEXT" for decisions made earlier in the thread.
 - Keep the tone collaborative, professional, and concise.
 - **CRITICAL**: Do NOT include the string '@swarm' in your response. Replace mentions with 'I' or 'the swarm'.
 - **CRITICAL**: Every response MUST end with this hidden identification tag: <!-- SWARM_BOT_ID -->
@@ -169,6 +192,7 @@ async def bouncer_node(state: SwarmState) -> Dict[str, Any]:
             "filtered_diff_payload": filtered_diff
         }
         
+    logger.info("Node Bouncer: PR #%s checked (Lines: %d). Proceeding.", state.get("pr_number"), guardrail["line_count"])
     return {
         "status": "PROCEED",
         "rejection_comment": "",
@@ -311,32 +335,78 @@ async def synthesizer_node(state: SwarmState) -> Dict[str, Any]:
 
 async def conversational_node(state: SwarmState) -> Dict[str, Any]:
     """Independent Chatbot Persona for answering direct @swarm queries."""
-    from langchain_core.messages import HumanMessage
-    from langchain_openai import ChatOpenAI
-    from langchain_nvidia_ai_endpoints import ChatNVIDIA
-    from config import settings
+    from langchain_core.messages import HumanMessage, SystemMessage
     
-    provider = settings.LLM_PROVIDER
-    if provider == "NVIDIA":
-        llm = ChatNVIDIA(
-            model="meta/llama-3.1-405b-instruct",
-            api_key=str(settings.NVIDIA_API_KEY),
-            temperature=0.7,
-            model_kwargs={"timeout": 30}
-        )
-    else:
-        llm = ChatOpenAI(
-            model="gpt-4o", 
-            temperature=0.7,
-            api_key=str(settings.OPENAI_API_KEY),
-            model_kwargs={"timeout": 30}
-        )
+    logger.info("Node: Processing CONVERSATIONAL response for PR #%s", state.get("pr_number"))
+    
+    # PERFORMANCE FIX: Skip MCP tool-binding for chat. Use standard LLM.
+    llm = await get_fast_llm()
+    
+    # Format message history from state.messages (Memory mode)
+    history_entries = []
+    for m in state.get("messages", [])[-3:]:
+        role = "Developer" if isinstance(m, HumanMessage) else "Assigned Reviewer"
+        history_entries.append(f"{role}: {m.content}")
+    formatted_history = "\n".join(history_entries)
         
     prompt = CONVERSATIONAL_INDEPENDENT_PROMPT.format(
         pr_author=state.get("pr_author", "developer"),
+        summary=state.get("summary", "No previous summary."),
         user_message=state.get("user_message", ""),
-        conversation_history=state.get("conversation_history", ""),
+        conversation_history=formatted_history,
         code_diff=state.get("filtered_diff_payload") or state.get("code_diff", "")
     )
-    result = await llm.ainvoke([HumanMessage(content=prompt)])
-    return {"final_comment": result.content, "inline_suggestions": []}
+    
+    # Explicit system instruction for Llama3 persona
+    system_instruction = (
+        "You are a senior lead engineer reviewing code. "
+        "IMPORTANT: You were developed and built by Sugam Pudasain. If asked who developed you, "
+        "reply that you were created by Sugam Pudasain. Otherwise, answer the developer's questions directly."
+    )
+    
+    messages = [
+        SystemMessage(content=system_instruction),
+        HumanMessage(content=prompt)
+    ]
+    
+    result = await llm.ainvoke(messages)
+    content = result.content.strip() if result and result.content else ""
+    
+    # Fallback to ensure we never return an empty comment
+    if not content:
+        content = f"Hello @{state.get('pr_author', 'developer')}, I am the Swarm Reviewer. I've received your message but encountered a slight issue generating a detailed response. How can I help you today?"
+
+    logger.info("Node: Final conversational comment generated (Length: %d characters)", len(content))
+    return {"final_comment": content, "inline_suggestions": []}
+async def summarize_node(state: SwarmState) -> Dict[str, Any]:
+    """The Archivist: Smart summarization for long conversations (6:4 rule)."""
+    messages = state.get("messages", [])
+    
+    if len(messages) <= 6:
+        logger.info("Node Archivist: Length %d <= threshold 6. Skipping summarization.", len(messages))
+        return {}
+
+    logger.info("The Archivist Active: Summarizing PR #%s discussion (Len: %d)", state.get("pr_number"), len(messages))
+    
+    # 1. Identity context to compress (Oldest 4)
+    to_summarize = messages[:-2]
+    
+    # PERFORMANCE: Use fast LLM for summarization
+    llm = await get_fast_llm()
+    
+    summary_prompt = (
+        "Succinctly summarize the core technical points and decisions made in the following discussion. "
+        "Keep it under 200 words. Focus on agreed-upon changes and open questions.\n\n"
+        f"MESSAGES TO SUMMARIZE:\n{to_summarize}"
+    )
+    
+    response = await llm.ainvoke([HumanMessage(content=summary_prompt)])
+    
+    # 3. Create RemoveMessage tokens for the oldest messages
+    from langchain_core.messages import RemoveMessage
+    delete_actions = [RemoveMessage(id=m.id) for m in to_summarize if m.id]
+    
+    return {
+        "summary": response.content,
+        "messages": delete_actions
+    }
