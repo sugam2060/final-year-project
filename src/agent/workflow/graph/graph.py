@@ -1,5 +1,8 @@
 from langgraph.graph import StateGraph, START, END
 from agent.workflow.state.state import SwarmState
+import logging
+
+logger = logging.getLogger(__name__)
 from agent.workflow.nodes.nodes import (
     architect_node, 
     security_node, 
@@ -9,7 +12,8 @@ from agent.workflow.nodes.nodes import (
     bouncer_node,
     dispatcher_node,
     route_dispatch,
-    conversational_node
+    conversational_node,
+    summarize_node
 )
 from agent.workflow.nodes.file_reviewer import file_reviewer_node
 
@@ -26,6 +30,7 @@ builder.add_node("optimizer", optimizer_node)
 builder.add_node("blast_radius", blast_radius_node)
 builder.add_node("synthesizer", synthesizer_node)
 builder.add_node("conversational", conversational_node)
+builder.add_node("archivist", summarize_node)
 
 # --- Routing Logic ---
 
@@ -35,13 +40,14 @@ builder.add_edge(START, "bouncer")
 # 2. Conditional Routing from Bouncer
 def route_from_bouncer(state: SwarmState):
     if state.get("status") == "REJECT":
-        return ["synthesizer"]
+        return "synthesizer"
     
     if state.get("is_conversational"):
-        # Bypass all specialists and hit the independent conversational LLM directly
-        return ["conversational"]
+        logger.info("Graph Router: Routing to CONVERSATIONAL path (archivist -> conversational)")
+        return "archivist"
         
-    # Fan-out: PR-wide specialists + Dispatcher (which fans out into File Reviewer Subgraphs)
+    logger.info("Graph Router: Routing to INITIAL review path (specialists fan-out)")
+    # Fan-out: Return a list of nodes to execute in parallel
     return ["architect", "security", "optimizer", "blast_radius", "dispatcher"]
 
 builder.add_conditional_edges("bouncer", route_from_bouncer)
@@ -58,7 +64,25 @@ builder.add_edge("file_reviewer", "synthesizer")
 
 # Finish (Synthesizer -> End)
 builder.add_edge("synthesizer", END)
+builder.add_edge("archivist", "conversational")
 builder.add_edge("conversational", END)
 
-# Final Graph Compilation
-swarm_app = builder.compile()
+# NEW: Persistent Global Store for Thread Weaver App
+_active_swarm_app = builder.compile()
+
+def get_swarm_app():
+    """Thread Weaver Interface: returns the most up-to-date compiled graph."""
+    return _active_swarm_app
+
+async def get_compiled_swarm_with_checkpointer(pool):
+    """
+    Returns the swarm graph compiled with a persistent PostgreSQL checkpointer.
+    The pool should be an asyncpg pool initialized in the FastAPI startup.
+    """
+    global _active_swarm_app
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    checkpointer = AsyncPostgresSaver(pool)
+    # Ensure tables exist (setup)
+    await checkpointer.setup()
+    _active_swarm_app = builder.compile(checkpointer=checkpointer)
+    return _active_swarm_app

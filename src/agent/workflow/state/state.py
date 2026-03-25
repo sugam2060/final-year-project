@@ -1,5 +1,7 @@
 from typing import TypedDict, List, Annotated, Any, Dict
 import operator
+from langchain_core.messages import AnyMessage
+from langgraph.graph.message import add_messages
 from agent.types.inline_comments import InlineSuggestion
 
 class FileReviewState(TypedDict):
@@ -31,7 +33,10 @@ class SwarmState(TypedDict):
     annotated_diff: str  # Pre-parsed diff with line markers for LLM accuracy
     is_conversational: bool  # Flag to change agent routing and behavior
     user_message: str        # The specific comment the user just typed
-    conversation_history: str  # Formatted string of previous PR comments
+    
+    # NEW: Thread-based message history (replaces conversation_history string)
+    messages: Annotated[List[AnyMessage], add_messages]
+    
     status: str  # "PROCEED" or "REJECT"
     rejection_comment: str
     filtered_diff_payload: str
@@ -41,4 +46,5 @@ class SwarmState(TypedDict):
     blast_radius_review: str
     final_comment: str
     inline_suggestions: List[InlineSuggestion]
+    summary: str  # NEW: Compressed context for long conversations
     parallel_reviewer_results: Annotated[List[Dict[str, Any]], operator.add]

@@ -11,6 +11,7 @@ GITHUB_TOKEN = config("GITHUB_TOKEN", cast=Secret)
 OPENAI_API_KEY = config("OPENAI_API_KEY", cast=Secret, default="your_openai_key_here")
 NVIDIA_API_KEY = config("NVIDIA_API_KEY", cast=Secret, default="")
 LLM_PROVIDER = config("LLM_PROVIDER", default="OPENAI")
+DATABASE_URL = config("DATABASE_URL", default="postgresql://postgres:postgres@localhost:5432/postgres")
 
 # LangSmith Configurations (Auto-traced by LangChain if LANGSMITH_TRACING is "true")
 LANGSMITH_TRACING = config("LANGSMITH_TRACING", default="false")
@@ -24,8 +25,11 @@ class Settings:
     OPENAI_API_KEY: Secret = OPENAI_API_KEY
     NVIDIA_API_KEY: Secret = NVIDIA_API_KEY
     LLM_PROVIDER: str = LLM_PROVIDER.strip().upper()
+    DATABASE_URL: str = DATABASE_URL
     
-    # Langsmith
+    # Llangsmith
+    # langgraph-checkpoint-postgres
+    # asyncpg
     LANGSMITH_TRACING: str = LANGSMITH_TRACING
     LANGSMITH_API_KEY: Secret = LANGSMITH_API_KEY
     LANGSMITH_PROJECT: str = LANGSMITH_PROJECT

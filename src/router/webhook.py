@@ -110,7 +110,7 @@ async def _handle_pull_request_event(payload: dict):
             # 1. Non-blocking Fetch
             diff_string = await asyncio.to_thread(fetch_diff)
             
-            # 2. Invoke LangGraph Orchestration (Async-native)
+            # 2. Invoke LangGraph Orchestration (Persistent via thread_id)
             await run_swarm(
                 pr_number=pr_event.pull_request.number,
                 code_diff=diff_string,
@@ -119,7 +119,7 @@ async def _handle_pull_request_event(payload: dict):
                 pr_author=payload.get("pull_request", {}).get("user", {}).get("login", "developer"),
                 is_conversational=False,
                 user_message="",
-                conversation_history=""
+                config={"configurable": {"thread_id": f"pr-{pr_event.pull_request.number}"}}
             )
         except Exception as e:
             logger.error("Async Scaffolding Failure: %s", e)
@@ -167,12 +167,12 @@ async def _handle_issue_comment_event(payload: dict):
     logger.info("@swarm mentioned in PR #%s by %s — triggering conversational review", pr_number, comment_author)
 
     async def process_conversational_swarm():
-        def fetch_context():
-            """Fetch PR diff and conversation history using PyGithub (sync)."""
+        def fetch_git_data():
+            """Only fetch the diff and commit SHA. History is handled by Thread Weaver."""
             repo = github_client.get_repo(repo_name)
             pr = repo.get_pull(pr_number)
 
-            # 1. Fetch the code diff
+            # Fetch the code diff
             files = pr.get_files()
             diff_chunks = []
             for file in files:
@@ -181,22 +181,10 @@ async def _handle_issue_comment_event(payload: dict):
                     if ext.lower() not in ['.png', '.jpg', '.zip', '.pem']:
                         diff_chunks.append(f"diff --git a/{file.filename} b/{file.filename}\n{file.patch}")
             diff_string = "\n\n".join(diff_chunks)
-
-            # 2. Fetch the last 5 comments for conversation context
-            all_comments = list(pr.get_issue_comments())
-            recent_comments = all_comments[-5:] if len(all_comments) > 5 else all_comments
-            history_parts = []
-            for c in recent_comments:
-                history_parts.append(f"**@{c.user.login}** said:\n{c.body}")
-            conversation_history = "\n\n---\n\n".join(history_parts)
-
-            # 3. Get commit SHA for anchoring
-            commit_sha = pr.head.sha
-
-            return diff_string, conversation_history, commit_sha
+            return diff_string, pr.head.sha
 
         try:
-            diff_string, conversation_history, commit_sha = await asyncio.to_thread(fetch_context)
+            diff_string, commit_sha = await asyncio.to_thread(fetch_git_data)
 
             await run_swarm(
                 pr_number=pr_number,
@@ -206,7 +194,7 @@ async def _handle_issue_comment_event(payload: dict):
                 pr_author=comment_author,
                 is_conversational=True,
                 user_message=comment_body,
-                conversation_history=conversation_history
+                config={"configurable": {"thread_id": f"pr-{pr_number}"}}
             )
         except Exception as e:
             logger.error("Conversational Swarm Failure for PR #%s: %s", pr_number, e)
@@ -251,17 +239,16 @@ async def _handle_review_comment_event(payload: dict):
     logger.info("@swarm mentioned in review comment PR #%s — triggering conversational review", pr_number)
 
     async def process_review_swarm():
-        def fetch_context():
+        def fetch_git_data():
             repo = github_client.get_repo(repo_name)
             pr = repo.get_pull(pr_number)
 
-            # 1. OPTIMIZATION: Only review the specific lines the user commented on.
+            # OPTIMIZATION: Only review the specific lines the user commented on.
             path = payload.get("comment", {}).get("path")
             diff_hunk = payload.get("comment", {}).get("diff_hunk")
             if path and diff_hunk:
                 diff_string = f"diff --git a/{path} b/{path}\n{diff_hunk}"
             else:
-                # Fallback to full PR diff if the hunk is somehow missing
                 files = pr.get_files()
                 diff_chunks = []
                 for file in files:
@@ -271,20 +258,10 @@ async def _handle_review_comment_event(payload: dict):
                             diff_chunks.append(f"diff --git a/{file.filename} b/{file.filename}\n{file.patch}")
                 diff_string = "\n\n".join(diff_chunks)
 
-            # 2. Fetch history (mixing issue comments and review comments for better context)
-            issue_comments = list(pr.get_issue_comments())[-3:]
-            review_comments = list(pr.get_review_comments())[-3:]
-            recent_comments = sorted(issue_comments + review_comments, key=lambda x: x.created_at)
-            
-            history_parts = []
-            for c in recent_comments[-5:]:
-                history_parts.append(f"**@{c.user.login}** said:\n{c.body}")
-            conversation_history = "\n\n---\n\n".join(history_parts)
-
-            return diff_string, conversation_history, pr.head.sha
+            return diff_string, pr.head.sha
 
         try:
-            diff_string, conversation_history, commit_sha = await asyncio.to_thread(fetch_context)
+            diff_string, commit_sha = await asyncio.to_thread(fetch_git_data)
             await run_swarm(
                 pr_number=pr_number,
                 code_diff=diff_string,
@@ -293,7 +270,7 @@ async def _handle_review_comment_event(payload: dict):
                 pr_author=comment_author,
                 is_conversational=True,
                 user_message=comment_body,
-                conversation_history=conversation_history
+                config={"configurable": {"thread_id": f"pr-{pr_number}"}}
             )
         except Exception as e:
             logger.error("Review Comment Swarm Failure for PR #%s: %s", pr_number, e)
